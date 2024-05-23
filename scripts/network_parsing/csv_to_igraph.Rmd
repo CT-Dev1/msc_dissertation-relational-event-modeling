@@ -1,0 +1,208 @@
+---
+title: "csv_to_igraph"
+author: '29189'
+date: "2024-05-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load required libraries
+library(igraph)
+library(tidyverse)
+library(lubridate)
+library(datetime)
+library(digest)
+```
+
+1) Load the data
+```{r}
+# Load the data
+raw_data_comments <- read.csv("C:\\Users\\rhrou\\OneDrive - London School of Economics\\Dissertation Data\\02-2021-12-2021_combined_csv\\full_comments_2021.csv")
+
+raw_data_submissions <- read.csv("C:\\Users\\rhrou\\OneDrive - London School of Economics\\Dissertation Data\\02-2021-12-2021_combined_csv\\full_submissions_2021.csv")
+```
+
+2) Data processing and username anonymization
+
+```{r}
+# Remove deleted comments and submissions
+comments <- raw_data_comments %>%
+  filter(author != "[deleted]")
+submissions <- raw_data_submissions %>%
+  filter(author != "[deleted]")
+
+# Anonymize the usernames using a hash function
+hash_username <- function(username) {
+  return(digest(username, algo = "sha256"))
+}
+comments$author <- sapply(comments$author, hash_username)
+submissions$author <- sapply(submissions$author, hash_username)
+
+# Variable selection and data type conversion
+comments$created_utc <- as_datetime(comments$created_utc)
+submissions$created_utc <- as_datetime(submissions$created_utc)
+comments <- comments %>% 
+  select(author, created_utc, link_id, score, parent_id, id, gilded, stickied, body, is_submitter, permalink)
+submissions <- submissions %>% 
+  select(author, created_utc, id, is_meta, is_original_content, is_reddit_media_domain, score, title, selftext, num_comments, gilded, stickied, permalink, upvote_ratio)
+
+# Save the processed data
+# save(comments, submissions, file = "processed_data.RData")
+```
+
+3) Creating daily user networks from the comments and submissions data
+
+```{r}
+
+# Load the data
+# load("processed_data.RData")
+
+# Initialize lists to store daily graphs and the cumulative list of users
+daily_edges <- list()
+all_users <- character()
+daily_graphs <- list()
+
+# Loop over each day
+for (current_day in unique(floor_date(comments$created_date, "day"))) {
+  # Filter comments and submissions for the current day
+  daily_comments <- filter(comments, floor_date(created_date, "day") == current_day)
+  daily_submissions <- filter(submissions, floor_date(created_date, "day") == current_day)
+  
+  # Update the cumulative list of all users seen so far
+  current_users <- unique(c(daily_comments$author, daily_submissions$author))
+  all_users <- unique(c(all_users, current_users))  # Make sure to only add unique users
+
+  # Create edge list for the current day
+  daily_comments$link_id <- substr(daily_comments$link_id, 4, nchar(daily_comments$link_id))
+  edges <- daily_comments %>%
+    left_join(daily_submissions, by = c("link_id" = "id")) %>%
+    select(author.x, author.y) %>%
+    rename(from = author.x, to = author.y) %>%
+    filter(!is.na(to))  # Remove NA to avoid edges with undefined nodes
+
+  # Store the edges data frame in the list
+  daily_edges[[as.character(current_day)]] <- edges
+  
+  # Create a node data frame for current cumulative users
+  nodes <- data.frame(name = all_users)
+  
+  # Create graph for the current day with all users encountered so far
+  g <- graph_from_data_frame(edges, directed = TRUE, vertices = nodes)
+  daily_graphs[[as.character(current_day)]] <- g
+}
+```
+
+
+```{r}
+# Load the data
+comments <- raw_data_comments
+submissions <- raw_data_submissions
+
+# Convert timestamps to dates
+comments$created_date <- as_datetime(comments$created_utc)
+submissions$created_date <- as_datetime(submissions$created_utc)
+
+# Initialize lists to store daily graphs and the cumulative list of users
+daily_edges <- list()
+all_users <- character()
+daily_graphs <- list()
+
+# Loop over each day
+for (current_day in unique(floor_date(comments$created_date, "day"))) {
+  # Filter comments and submissions for the current day
+  daily_comments <- filter(comments, floor_date(created_date, "day") == current_day)
+  daily_submissions <- filter(submissions, floor_date(created_date, "day") == current_day)
+  
+  # Update the cumulative list of all users seen so far
+  current_users <- unique(c(daily_comments$author, daily_submissions$author))
+  all_users <- unique(c(all_users, current_users))  # Make sure to only add unique users
+
+  # Adjust link_id for matching
+  daily_comments$link_id <- substr(daily_comments$link_id, 4, nchar(daily_comments$link_id))
+
+  # Create edge list for the current day, including attributes
+  edges <- daily_comments %>%
+    left_join(daily_submissions, by = c("link_id" = "id")) %>%
+    select(author.x, author.y, score.x, parent_id,
+           id, created_utc.x, link_id,
+           gilded.x, stickied.x) %>%
+    rename(from = author.x, to = author.y, created_utc = created_utc.x, gilded = gilded.x, stickied = stickied.x) %>%
+    filter(!is.na(to))  # Remove NA to avoid edges with undefined nodes
+
+  # Create a node data frame for current cumulative users
+  nodes <- data.frame(name = all_users)
+  
+  # Create graph for the current day with all users encountered so far
+  g <- graph_from_data_frame(edges, directed = TRUE, vertices = nodes)
+  daily_graphs[[as.character(current_day)]] <- g
+}
+```
+
+
+```{r}
+# Construction of Nodes data frame that serves as a look-up for node attributes for each of the 28 daily graphs (TO BE COMPLETED)
+
+# Some big decisions about what to store as node attributes - is it cumulative of multiple submission or is it just the last submission - probably it is cumulative of all submissions - classifying a user as a meme-submitter/ DDers etc.
+
+```
+
+
+
+```{r, fig.width=10, fig.height=10}
+for (i in seq_along(daily_graphs)) {
+  summary(daily_graphs[[i]])
+}
+```
+
+
+
+```{r}
+
+# You now have a list of daily igraph objects
+
+# Choose what to save as an edge attribute - the number of comments, the score per comment
+
+# Store as an rdata file to be loaded later on
+
+# Once the above is optimized, code it into a loop for multiple csv files
+
+```
+
+Pipeline so far:
+1) combine_folder_multiprocess.py --> python3 combine_folder_multiprocess.py reddit/comments --value amcstock
+* change the above so that the file location of reddit/comments is accurate, run on the entire folder with the zst files
+
+
+2) own_to_csv.py --> run this manually in the script, using the function
+
+Next steps:
+- Create a similar network for submissions -  relate them to the user
+
+Questions:
+- How should I format the total number of nodes?
+
+
+
+Additional node attributes:
+- Due diligence posts
+- Memes
+- Commitment signalling 
+- Past posts on amcstock
+- Past posts on other subreddits
+- Total karma
+
+To-Dos:
+- Come up with a clever way of getting around the deleted usernames issue, currently 134,416 of original comments are deleted by the users
+- Assess the missingness of the data - see if deleted comments/submissions are in fact random
+- Find a better way to keep track of the current state of the network
+
+Big Decisions:
+- Defining users within the network
+1) Time-interval inclusion
+2) Time-decay function
+3) Activity based division
+4) 
