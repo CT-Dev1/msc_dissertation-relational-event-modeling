@@ -6,54 +6,41 @@ import csv
 import os
 import glob
 
-# Example: convert folder of zst compressed files to single csv with:
-# python zst_to_csv.py /path/to/input_folder /path/to/output_folder/combined.csv
-
-def convert_zst_to_csv(file_name, csv_writer, header_written):
-    ''' Modified Function from u/ramnamsatyahai to convert single zst file to single csv file'''
-
-    with open(file_name, 'rb') as fh:
+def convert_zst_to_csv(file_name, output_csv_file):
+    with open(file_name, 'rb') as fh, open(output_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
         dctx = zstd.ZstdDecompressor(max_window_size=2147483648)
         stream_reader = dctx.stream_reader(fh)
         text_stream = io.TextIOWrapper(stream_reader, encoding='utf-8')
+        
+        csv_writer = csv.writer(csvfile)
         
         # Initialize header variable outside the loop
         header = None
         
         # Iterate over each JSON object to determine headers dynamically
         for line in text_stream:
-            obj = json.loads(line.strip())
-            
-            if not obj:  # skip empty lines
-                continue
+            obj = json.loads(line)
             
             # Extract keys if not already done
-            if not header_written:
+            if header is None:
                 header = obj.keys()
                 csv_writer.writerow(header)
-                header_written = True
             
             # Write values for each JSON object, handling missing keys gracefully
             csv_writer.writerow([obj.get(key, '') for key in header])
-    
-    return header_written
 
-def process_zst_files(input_folder, output_file):
-    '''Function to process entire zst file folder and write to single csv file'''
-    # Get all .zst files in the input folder
-    zst_files = glob.glob(os.path.join(input_folder, '*.zst'))
-    
-    header_written = False
-    
-    # Open the output CSV file once
-    with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
-        csv_writer = csv.writer(csvfile)
-        
-        # Iterate over each .zst file and append its contents to the single CSV file
-        for zst_file in zst_files:
-            header_written = convert_zst_to_csv(zst_file, csv_writer, header_written)
+# Specify the folder path
+input_folder = "/path/to/zst/folder"
+#Specify output file prefix
+output_file = "full_submissions_2021"
+i = 1 # counter for month - modify to match first month of data - 1
 
-# Example usage
-# input_folder = '/path/to/input_folder'
-# output_file = '/path/to/output_folder/combined.csv'
-# process_zst_files(input_folder, output_file)
+# List all files in the specified folder
+for file_name in os.listdir(input_folder):
+    i += 1
+    # Full path of the file
+    file_path = os.path.join(input_folder, file_name)
+    if os.path.isfile(file_path):
+        print(file_path) # Print current file
+        output = output_file + "_" + str(i) +".csv"
+        convert_zst_to_csv(file_path,output)
