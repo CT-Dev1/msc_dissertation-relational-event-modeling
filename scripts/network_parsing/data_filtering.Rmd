@@ -1,0 +1,69 @@
+---
+title: "csv_to_igraph"
+author: '29189'
+date: "2024-05-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Pipeline so far:
+1) combine_folder_multiprocess.py --> python3 combine_folder_multiprocess.py reddit/comments --value amcstock
+* change the above so that the file location of reddit/comments is accurate, run on the entire folder with the zst files
+
+2) own_to_csv.py to convert to csv
+
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(digest)
+```
+ 
+1) Load the data
+```{r}
+# Load the data
+raw_data_comments <- read.csv("C:\\Users\\rhrou\\OneDrive - London School of Economics\\Dissertation Data\\02-2021-12-2021_combined_csv\\full_comments_2021.csv")
+
+raw_data_submissions <- read.csv("C:\\Users\\rhrou\\OneDrive - London School of Economics\\Dissertation Data\\02-2021-12-2021_combined_csv\\full_submissions_2021.csv")
+```
+
+2) Data processing and username anonymization
+```{r}
+# Remove deleted comments and submissions, ie. those with no user information
+comments <- raw_data_comments %>%
+  filter(author != "[deleted]")
+submissions <- raw_data_submissions %>%
+  filter(author != "[deleted]")
+
+# Anonymize the usernames using a hash function
+hash_username <- function(username) {
+  return(digest(username, algo = "sha256"))
+}
+comments$author <- sapply(comments$author, hash_username)
+submissions$author <- sapply(submissions$author, hash_username)
+
+# Filter out submissions that were removed by reddit, mods, users, etc.
+submissions <- submissions %>% 
+  filter(grepl("moderator", removed_by_category) == FALSE) %>% 
+  filter(grepl("deleted", removed_by_category) == FALSE) %>%
+  filter(grepl("author", removed_by_category) == FALSE) %>%
+  filter(grepl("automod_filtered", removed_by_category) == FALSE) %>%
+  filter(grepl("reddit", removed_by_category) == FALSE) %>%
+  filter(grepl("copyright_takedown", removed_by_category) == FALSE)
+
+# Variable selection for comments
+comments <- comments %>% 
+  select(author, created_utc, link_id, score, parent_id, id, gilded, stickied, body, is_submitter, permalink, name, stickied)
+
+# Variable selection for submissions
+submissions <- submissions %>% 
+  select(author, created_utc, id, is_meta, is_original_content, is_reddit_media_domain, score, title, selftext, num_comments, gilded, stickied, permalink, upvote_ratio, can_mod_post, link_flair_text, title, media, media_embed, subreddit_subscribers, title, url, view_count)
+
+# Save the processed data
+save(comments, submissions, file = "processed_data.RData")
+
+# Note that some comments may be linked to deleted submissions which are not saved, nonetheless sub comment interactions within these deleted submissions are still used in network interactions
+```
