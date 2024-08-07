@@ -1,4 +1,4 @@
-# thesis
+# Msc Dissertation
 
 This repository is for my postgraduate thesis "A Longitudinal Network Analysis of Online Collective Action: Reddit’s r/amcstock Community"
 
