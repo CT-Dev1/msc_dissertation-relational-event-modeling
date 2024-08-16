@@ -9,6 +9,8 @@ All data is derived from the push shift data dump at academic torrents, includes
 
 The _eventnet_ software used to run relational event model statistics is courtesy of Jeurgen Lerner, and can be downloaded from its [Github]([https://academictorrents.com/details/9c263fc85366c1ef8f5bb9da0203f4c8c8db75f4](https://github.com/juergenlerner/eventnet)). 
 
+All models and visualizations are run in R and raw data parsing is run in Python.
+
 # Code Directory
 
 ### eventnet_configs
