@@ -1,0 +1,180 @@
+---
+title: "stage3"
+author: '29189'
+date: "2024-08-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(survival)
+library(tidyverse)
+library(stargazer)
+```
+
+```{r}
+# Firstly read in the data - change to match correct file
+events <- read.csv("../Output_Data/stage3/event_type/event_list_6var_SUB.csv")
+
+# Next generate the manually inputted statistics
+
+# 1) NETWORK - Seconds since last observation
+events <- events %>%
+  arrange(TIME) %>%  # Ensure data is ordered by TIME
+  mutate(time_since_last_comment = TIME - lag(TIME, default = first(TIME))) %>%
+  group_by(TIME) %>%
+  mutate(time_since_last_comment = first(time_since_last_comment)) %>%
+  ungroup()
+
+# Check correct implementation
+# print(events[20000:32000,])
+
+# Standardize explanatory variables - ensure correct columns selected
+events[,c(9:ncol(events))] <- scale(events[,c(9:ncol(events))])
+```
+
+
+```{r}
+# Fit a model similar to model 4 from stage 1, ie. model with highest GOF
+
+event.surv <- Surv(time = rep(1,nrow(events)), event = events$IS_OBSERVED)
+
+# model.event.main <- coxph(event.surv ~ 
+#                   + main_activity
+#                   + sub_activity
+#                   + main_popularity
+#                   + sub_popularity
+#                   + repetition_main_out
+#                   + repetition_sub_out
+#                   + reciprocation_main
+#                   + reciprocation_sub
+#                   + time_since_last_comment
+#                   + main_4_cycle
+#                   + sub_4_cycle
+#                   + main_triangle
+#                   + sub_triangle
+#                   # Non Linear Effects
+#                   + I(main_activity^2)
+#                   + I(main_popularity^2)
+#                   # Interactions
+#                   + main_activity*main_popularity
+#                   + main_activity*repetition_main_out
+#                   + main_activity*reciprocation_main
+#                   + repetition_main_out*reciprocation_main
+#                   + main_popularity*repetition_main_out
+#                   + main_popularity*reciprocation_main
+#                   + main_4_cycle * main_activity
+#                   + main_activity * sub_activity
+#                   + main_activity * sub_popularity
+#                   + main_activity * sub_triangle
+# 		              + strata(TIME_UNIT)
+#                   , data = events,
+# 		              control = coxph.control(iter.max = 100))
+
+
+model.event.sub <- coxph(event.surv ~ 
+                  + main_activity
+                  + sub_activity
+                  + main_popularity
+                  + sub_popularity
+                  + repetition_main_out
+                  + repetition_sub_out
+                  + reciprocation_main
+                  + reciprocation_sub
+                  + time_since_last_comment
+                  + main_4_cycle
+                  + sub_4_cycle
+                  + main_triangle
+                  + sub_triangle
+                  # Non Linear Effects
+                  + I(sub_activity^2)
+                  + I(sub_popularity^2)
+                  # Interactions
+                  + sub_activity*sub_popularity
+                  + sub_activity*repetition_sub_out
+                  + sub_activity*reciprocation_sub
+                  + repetition_sub_out*reciprocation_sub
+                  + sub_popularity*repetition_sub_out
+                  + sub_popularity*reciprocation_sub
+                  + sub_4_cycle * sub_activity
+                  + main_activity * sub_activity
+                  + main_activity * sub_popularity
+                  + main_activity * sub_triangle
+		              + strata(TIME_UNIT)
+                  , data = events,
+		              control = coxph.control(iter.max = 100))
+  
+# Save the model
+# saveRDS(model.event.sub, file = "../Output_Data/stage3/event_type/model_event_sub.rds")
+```
+
+
+
+# Stage 3 - Weighted Model
+
+
+```{r}
+# Firstly read in the data - change to match correct file
+events <- read.csv("../Output_Data/stage3/weighted/event_list_6var_weighted.csv")
+
+# Next generate the manually inputted statistics
+
+# 1) NETWORK - Seconds since last observation
+events <- events %>%
+  arrange(TIME) %>%  # Ensure data is ordered by TIME
+  mutate(time_since_last_comment = TIME - lag(TIME, default = first(TIME))) %>%
+  group_by(TIME) %>%
+  mutate(time_since_last_comment = first(time_since_last_comment)) %>%
+  ungroup()
+
+# Check correct implementation
+# print(events[20000:32000,])
+
+# Standardize explanatory variables - ensure correct columns selected
+events[,c(9:ncol(events))] <- scale(events[,c(9:ncol(events))])
+```
+
+
+# Compute weighted model
+
+```{r}
+
+event.surv <- Surv(time = rep(1,nrow(events)), event = events$IS_OBSERVED)
+
+# Note that we don't need to include the time_since_last_comment and total_comments_observed as they did not improved the GOF in the baseline stage 1 tests
+model.weighted <- coxph(event.surv ~ 
+                  + user_activity
+                  + user_popularity
+                  + comment_reciprocation
+                  + comment_repetition
+                  + four_cycle
+                  + triad_out_out
+                  + triad_in_out
+                  + triad_out_in
+                  # Non Linear Effects
+                  + I(user_activity^2)
+                  + I(user_popularity^2)
+                  # Interactions
+                  + user_activity*user_popularity
+                  + user_activity*comment_repetition
+                  + user_activity*comment_reciprocation
+                  + user_popularity*comment_repetition
+                  + user_popularity*comment_reciprocation
+                  + triad_out_out * user_activity
+                  + triad_out_out * user_popularity
+                  + four_cycle * user_activity
+		              + strata(TIME_UNIT)
+                  , data = events,
+		              control = coxph.control(iter.max = 100))
+
+#summary(model.weighted)
+
+
+```
+
+
+
+

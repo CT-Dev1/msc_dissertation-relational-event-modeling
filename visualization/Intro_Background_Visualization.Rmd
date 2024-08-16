@@ -1,0 +1,101 @@
+---
+title: "Introduction_Background_Visualizations"
+author: '29189'
+date: "2024-08-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Download the AMC stock historical data for visualization
+library(quantmod)
+
+# Download AMC data
+getSymbols("AMC", from = "2021-01-01", to = "2022-12-31", src = "yahoo")
+
+# Convert to dataframe
+amc_data <- data.frame(date=index(AMC), coredata(AMC))
+
+# Compute the percentage gain from the stock price on first day of trading in 2021
+
+# Firstly get the base price, the closing price on the first day of trading
+base_price <- amc_data %>% 
+  filter(date == as.Date("2021-01-04")) %>% 
+  pull(AMC.Close)
+
+# Next calculate the percent gain on each day from this base price
+amc_data <- amc_data %>%
+  mutate(percent_gain = (AMC.High - base_price) / base_price * 100)
+
+library(ggplot2)
+library(lubridate)
+library(scales)
+library(tidyverse)
+```
+
+```{r, suppressWarnings=TRUE}
+
+# Define annotation parameters
+annotations <- list(
+  list(x = as.Date("2021-02-22"), y = 800, label = "r/amcstock \ncreated", color = "black", size = 3),
+  list(x = as.Date("2021-03-03"), y = 1500, label = "Gamestop\nShort-Squeeze", color = "black", size = 3),
+  list(x = as.Date("2021-07-01"), y = 200, label = "AMC\nShort-Squeeze", color = "black", size = 3),
+  list(x = as.Date("2021-09-10"), y = 600, label = "Stock Price\n Remains Far Above\n Fundamental Value", color = "black", size = 3),
+  list(x = as.Date("2021-10-20"), y = 200, label = "Movement Achieves\nSignificant Success", color = "black", size = 3),
+  list(x = as.Date("2022-02-05"), y = 1500, label = "Stock Declines\nas Expectations of\nFurther Squeeze Deteriorate", color = "black", size =3),
+  list(x = as.Date("2021-04-10"), y = 2500, label = "Coordinated Retail\nBuying on Reddit", color = "black", size = 3),
+  list(x = as.Date("2022-05-25"), y = 1500, label = "End Observation\nPeriod", color = "black", size = 3),
+  list(x = as.Date("2021-01-02"), y = 300, label = "Begin\nObservation\nPeriod", color = "black", size = 3),
+  list(x = as.Date("2021-04-02"), y = 2050, label = "Meme Stock\nInterest Grows", color = "black", size = 3),
+  list(x = as.Date("2021-03-20"), y = 2900, label = "Movement\nGains Momentum", color = "darkred", size = 4),
+  list(x = as.Date("2021-07-30"), y = 3250, label = "Peak Activity Period", color = "darkred", size = 4),
+  list(x = as.Date("2022-03-10"), y = 3250, label = "Decline Period", color = "darkred", size = 4),
+  list(x = as.Date("2021-09-20"), y = 2600, label = "Explosive Growth,\n Short-positions cover", color = "black", size = 3)
+)
+
+stock_plot <- ggplot(amc_data, aes(x = date, y = percent_gain)) +
+  geom_line(color = "lightblue", size = 0.8) +
+  
+  # Key event lines
+  geom_vline(xintercept = as.Date("2021-01-27"), linetype="dashed", color = "darkgreen") +
+  geom_vline(xintercept = as.Date("2021-06-02"), linetype="dashed", color = "darkgreen") +
+  geom_vline(xintercept = as.Date("2022-06-30"), linetype="dashed", color = "darkgreen") +
+  geom_vline(xintercept = as.Date("2021-12-02"), linetype="dashed", color = "darkgreen") +
+  
+  # Annotations
+  lapply(annotations, function(a) {
+    annotate("text", x = a$x, y = a$y, label = a$label, 
+             color = a$color, size = a$size, vjust = -0.5)
+  }) +
+  
+  scale_x_date(limits = c(as.Date("2021-01-01"), as.Date("2022-06-30")),
+               date_breaks = "3 months",
+               date_labels = "%b %Y") +
+  scale_y_continuous(labels = percent_format(scale = 1)) +
+  labs(y = "Stock Price\nGain (%)") +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 8),  
+    axis.text.y = element_text(size = 8),  
+    axis.title.x = element_blank(),  
+    axis.title.y = element_text(size = 9, vjust = 10, angle = 90), 
+    plot.margin = margin(1, 1, 1, 1, "cm"),
+    panel.background = element_rect(fill = "white", color = NA), 
+    plot.background = element_rect(fill = "white", color = NA) 
+  )
+stock_plot
+# Save the plot
+# ggsave("AMC_timeline_annotated.png", 
+#        plot = stock_plot, 
+#        width = 20, 
+#        height = 12, 
+#        dpi = 300, 
+#        bg = "white",
+#        scale = 0.39)
+```
+
+
+

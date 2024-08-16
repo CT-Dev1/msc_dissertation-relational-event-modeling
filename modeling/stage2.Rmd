@@ -1,0 +1,682 @@
+---
+title: "stage2"
+author: '29189'
+date: "2024-07-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load packages
+library(tidyverse)
+library(lubridate)
+library(survival)
+
+# Assume events data already loaded, time_since_last_comment added, variables standardized
+# events <- read.csv("../Output_Data/stage1/full_results_hl336.csv")
+
+# set working directory
+setwd("D:\\OneDrive - London School of Economics\\Dissertation Data\\Modelling")
+#save(events, file = "events_standardized.rds")
+
+# Load events data
+#load("events_standardized.rds")
+
+```
+
+```{r}
+# Test to check rds writing 
+
+# setwd("D:\\OneDrive - London School of Economics\\Dissertation Data\\Modelling")
+# 
+# 
+# test_data <- list(data.frame(
+#   user_activity = c(1, 2, 3, 4, 5),
+#   user_popularity = c(5, 4, 3, 2, 1),
+#   IS_OBSERVED = c(1, 0, 1, 0, 1)
+# ))
+# 
+# # save the data
+# saveRDS(test_data, "test_data.rds")
+# 
+# # load the data
+# loaded_data <- readRDS("test_data.rds")
+
+```
+
+
+
+# SLIDING WINDOW ANALYSIS - INTERACTION EFFECT ON FULL DATA VERSION - VERSION 2
+
+```{r}
+library(survival)
+library(dplyr)
+library(lubridate)
+
+# set working directory
+setwd("D:\\OneDrive - London School of Economics\\Dissertation Data\\Modelling")
+
+# Set memory limit (adjust as needed, but keep it slightly below your total RAM)
+memory.limit(size = 15000)  # Set to 15GB
+cat("Memory limit set to 15GB\n")
+
+# Create event.surv as a global variable
+cat("Creating global event.surv variable...\n")
+event.surv <- Surv(time = rep(1, nrow(events)), event = events$IS_OBSERVED)
+cat("Global event.surv variable created\n")
+
+
+# Function to run models and extract results
+run_models <- function() {
+  cat("Running models on full dataset with window factor\n")
+  
+  cat("Running Model 0...\n")
+  model_0 <- coxph(event.surv ~ 
+                   user_activity + user_popularity + window_factor +
+                   user_activity:window_factor + user_popularity:window_factor +
+                   strata(TIME_UNIT),
+                   data = events,
+                   control = coxph.control(iter.max = 100))
+  
+  results_0 <- extract_stats(model_0)
+  rm(model_0); gc()  # Remove model from memory
+  cat("Model 0 completed\n")
+  
+  cat("Running Model 3...\n")
+  model_3 <- coxph(event.surv ~ 
+                   user_activity + user_popularity + comment_repetition + 
+                   comment_reciprocation + triad_out_out + triad_out_in + 
+                   triad_in_out + four_cycle + window_factor +
+                   (user_activity + user_popularity + comment_repetition + 
+                    comment_reciprocation + triad_out_out + triad_out_in + 
+                    triad_in_out + four_cycle):window_factor +
+                   strata(TIME_UNIT),
+                   data = events,
+                   control = coxph.control(iter.max = 100))
+  
+  results_3 <- extract_stats(model_3)
+  rm(model_3); gc()  # Remove model from memory
+  cat("Model 3 completed\n")
+  
+  cat("Running Model 4...\n")
+  model_4 <- coxph(event.surv ~ 
+                   user_activity + user_popularity + comment_repetition + 
+                   comment_reciprocation + triad_out_out + triad_out_in + 
+                   triad_in_out + four_cycle + user_activity:user_popularity + 
+                   user_activity:comment_repetition + 
+                   user_activity:comment_reciprocation + 
+                   comment_repetition:comment_reciprocation + 
+                   user_popularity:comment_repetition + 
+                   user_popularity:comment_reciprocation + 
+                   four_cycle:user_activity + window_factor +
+                   (user_activity + user_popularity + comment_repetition + 
+                    comment_reciprocation + triad_out_out + triad_out_in + 
+                    triad_in_out + four_cycle + user_activity:user_popularity + 
+                    user_activity:comment_repetition + 
+                    user_activity:comment_reciprocation + 
+                    comment_repetition:comment_reciprocation + 
+                    user_popularity:comment_repetition + 
+                    user_popularity:comment_reciprocation + 
+                    four_cycle:user_activity):window_factor +
+                   strata(TIME_UNIT),
+                   data = events,
+                   control = coxph.control(iter.max = 100))
+  
+  results_4 <- extract_stats(model_4)
+  rm(model_4); gc()  # Remove model from memory
+  cat("Model 4 completed\n")
+  
+  return(list(model_0 = results_0, model_3 = results_3, model_4 = results_4))
+}
+
+# Extract stats function remains unchanged
+extract_stats <- function(model) {
+  coeffs <- coef(model)
+  se <- sqrt(diag(vcov(model)))
+  z <- coeffs / se
+  p_values <- 2 * (1 - pnorm(abs(z)))
+  
+  return(list(
+    coefficients = list(
+      estimates = coeffs,
+      std_errors = se,
+      hazard_ratios = exp(coeffs),
+      p_values = p_values
+    ),
+    concordance = model$concordance[1],
+    log_likelihood = model$loglik,
+    tests = list(
+      wald = model$wald.test,
+      score = model$score
+    ),
+    sample_size = list(
+      n_events = model$n.event,
+      n_total = model$n
+    )
+  ))
+}
+
+# Main function to run the sliding window analysis # CHANGE BACK TO 30 and 14
+run_sliding_window_analysis <- function(window_length = 30*24*60*60, interval_period = 14*24*60*60) {
+  start_time <- min(events$TIME)
+  end_time <- max(events$TIME)
+  cat("Start time:", start_time, "\n")
+  cat("End time:", end_time, "\n")
+  cat("Time range (seconds):", end_time - start_time, "\n")
+  window_starts <- seq(start_time, end_time - window_length, by = interval_period)
+  
+  # Check for existing results
+  existing_results <- list.files(pattern = "window_results_\\d+\\.rds")
+  if (length(existing_results) > 0) {
+    start_index <- max(as.numeric(gsub("window_results_|\\.rds", "", existing_results))) + 1
+    cat("Resuming from window", start_index, "\n")
+  } else {
+    start_index <- 1
+    cat("No existing results found. Starting from the first window.\n")
+  }
+  
+  if (start_index > length(window_starts)) {
+    cat("All windows have been processed. Analysis complete.\n")
+    return(NULL)
+  }
+  
+  for (i in start_index:length(window_starts)) {
+    window_start <- window_starts[i]
+    window_end <- window_start + window_length
+    
+    cat("Processing window", i, "of", length(window_starts), "\n")
+    cat("Window start:", window_start, "\n")
+    cat("Window end:", window_end, "\n")
+    
+    # Create binary factor for current window in the global environment
+    events$window_factor <<- factor(events$TIME >= window_start & events$TIME < window_end)
+    
+    # Run models on entire dataset with current window factor
+    window_results <- run_models()
+    
+    # Create a named list for the current window results
+window_results_list <- list()
+window_results_list[[paste0("window_results_", i)]] <- list(
+  start_time = window_start,
+  end_time = window_end,
+  results = window_results
+)
+
+# print current working directory
+cat("Current working directory:", getwd(), "\n")
+
+# Save results for the current window only
+tryCatch({
+  file_name <- paste0("window_results_", i, ".rds")
+  saveRDS(window_results_list, file_name)
+  if (file.exists(file_name)) {
+    cat("Results saved for window", i, "in file:", file_name, "\n")
+  } else {
+    cat("ERROR: File", file_name, "was not created. Check permissions and disk space.\n")
+  }
+}, error = function(e) {
+  cat("ERROR: Failed to save results for window", i, "\n")
+  cat("Error message:", conditionMessage(e), "\n")
+})
+
+# Clear memory
+rm(window_results, window_results_list)
+gc()
+cat("Memory cleared after window", i, "\n")
+  }
+  
+  cat("All windows processed successfully\n")
+}
+
+# Start the analysis
+
+i <- 0
+while (i < 1) {
+  run_sliding_window_analysis()
+  current_windows_completed <- length(list.files(pattern = "window_results_\\d+\\.rds"))
+  if (current_windows_completed >= 30) {
+    i <- 2
+  }  
+}
+
+
+```
+
+
+# Reading the window results
+
+```{r}
+# List all window results files
+window_results_files <- list.files(pattern = "window_results_\\d+\\.rds")
+
+# Load all window results
+window_results <- lapply(window_results_files, readRDS)
+
+# Check the structure of the loaded results
+glimpse(window_results)
+
+# Make sure the results are in the correct order
+window_results <- window_results[order(as.numeric(gsub("window_results_|\\.rds", "", window_results_files)))]
+
+```
+
+
+# ANALYZING RESULTS
+
+# EXTRACTING RESULTS
+
+```{r}
+library(ggplot2)
+library(lubridate)
+
+# Load and combine RDS files
+window_results_files <- list.files(pattern = "window_results_\\d+\\.rds")
+
+# Load all window results
+window_results <- lapply(window_results_files, readRDS)
+
+
+# Make sure the results are in the correct order
+window_results <- window_results[order(as.numeric(gsub("window_results_|\\.rds", "", window_results_files)))]
+
+# Check the structure of the loaded results
+glimpse(window_results)
+
+
+```
+
+
+
+# ACTIVITY AND POPULARITY EFFECTS OVER TIME 
+```{r}
+# Function to extract user activity and popularity interactions
+extract_user_interactions <- function(window_results) {
+  data.frame(
+    window = seq_along(window_results),
+    time = sapply(window_results, function(x) {
+      window_name <- names(x)
+      mean(c(x[[window_name]]$start_time, x[[window_name]]$end_time))
+    }),
+    model_0_user_activity = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_0$coefficients$hazard_ratios["user_activity:window_factorTRUE"]
+    }),
+    model_0_user_popularity = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_0$coefficients$hazard_ratios["user_popularity:window_factorTRUE"]
+    }),
+    model_3_user_activity = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_3$coefficients$hazard_ratios["user_activity:window_factorTRUE"]
+    }),
+    model_3_user_popularity = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_3$coefficients$hazard_ratios["user_popularity:window_factorTRUE"]
+    }),
+    model_4_user_activity = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["user_activity:window_factorTRUE"]
+    }),
+    model_4_user_popularity = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["user_popularity:window_factorTRUE"]
+    })
+  )
+}
+
+# Extract user activity and popularity interactions
+user_df <- extract_user_interactions(window_results)
+
+# Convert UNIX time to datetime
+user_df <- user_df %>%
+  mutate(datetime = as_datetime(time))
+
+# Create the plot
+ggplot(user_df) +
+  # Model 0 lines
+  geom_line(aes(x = datetime, y = model_0_user_activity, color = "User Activity", linetype = "Model 0")) +
+  geom_line(aes(x = datetime, y = model_0_user_popularity, color = "User Popularity", linetype = "Model 0")) +
+  
+  # Model 3 lines
+  geom_line(aes(x = datetime, y = model_3_user_activity, color = "User Activity", linetype = "Model 3")) +
+  geom_line(aes(x = datetime, y = model_3_user_popularity, color = "User Popularity", linetype = "Model 3")) +
+  
+  # Model 4 lines
+  geom_line(aes(x = datetime, y = model_4_user_activity, color = "User Activity", linetype = "Model 4")) +
+  geom_line(aes(x = datetime, y = model_4_user_popularity, color = "User Popularity", linetype = "Model 4")) +
+  
+  # Add horizontal line at y = 0
+  geom_hline(yintercept = 1, color = "black", linetype = "solid") +
+  
+  # Add vertical line at beginning of June 2021
+  geom_vline(xintercept = as.POSIXct("2021-06-01"), color = "black", linetype = "dotted") +
+  geom_vline(xintercept = as.POSIXct("2022-01-02"), linetype="dotted", color = "black") +
+  geom_vline(xintercept = as.POSIXct("2021-02-01"), linetype="dotted", color = "black") +
+  geom_vline(xintercept = as.POSIXct("2022-06-30"), linetype="dotted", color = "black") +
+
+
+  # Add annotation for AMC short squeeze
+  annotate("text", x = as.POSIXct("2021-06-08"), y = 0.6, label = "AMC Short Squeeze", hjust = 0, size = 3) +
+  annotate("text", x = as.POSIXct("2022-01-10"), y = 2, label = "Decline Period\nin Stock Price", hjust = 0, size = 3) +
+  annotate("text", x = as.POSIXct("2022-04-20"), y = 1.07, label = "Zero Effect Line", hjust = 0, size = 3) +
+  annotate("text", x = as.POSIXct("2021-02-05"), y = 0, label = "Begin\nObservation", hjust = 0, size = 3) +
+  annotate("text", x = as.POSIXct("2021-02-05"), y = 2, label = "Small Network\nStock Price Growth", hjust = 0, size = 3) +
+  annotate("text", x = as.POSIXct("2021-07-01"), y = 2.25, label = "Mature Network\nHigh Stock Price", hjust = 0, size = 3) +
+  annotate("text", x = as.POSIXct("2022-05-05"), y = 0, label = "End\nObservation", hjust = 0, size = 3) +
+
+  scale_linetype_manual(values = c("Model 0" = "dotted", "Model 3" = "dashed", "Model 4" = "solid"),
+                        name = "Model") +
+  scale_color_brewer(palette = "Set1", 
+                     name = "REM Statistic Effect") +
+  labs(x = "Date",
+       y = "Conditional Likelihood Effect") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        legend.box = "vertical",
+        legend.margin = margin()) +
+  guides(linetype = guide_legend(order = 1),
+         color = guide_legend(order = 2)) +
+  
+  # Restrict x-axis domain
+  scale_x_datetime(limits = c(as.POSIXct("2021-02-01"), as.POSIXct("2022-06-30"))) +
+  
+  # Restrict y-axis domain
+  scale_y_continuous(limits = c(0, 2.5))
+
+# Save the plot
+# ggsave("activity_popularity_over_time.png", width = 12, height = 8, dpi = 300, bg = "white", scale = 0.5)
+```
+
+- Above demonstrates that the baseline coefficients don't really change over the models
+
+# Dyad Effects over time for models 3 and 4
+
+```{r}
+# Function to extract repetition and reciprocation interactions
+extract_rep_rec_interactions <- function(window_results) {
+  data.frame(
+    window = seq_along(window_results),
+    time = sapply(window_results, function(x) {
+      window_name <- names(x)
+      mean(c(x[[window_name]]$start_time, x[[window_name]]$end_time))
+    }),
+    model_3_repetition = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_3$coefficients$hazard_ratios["comment_repetition:window_factorTRUE"]
+    }),
+    model_3_reciprocation = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_3$coefficients$hazard_ratios["comment_reciprocation:window_factorTRUE"]
+    }),
+    model_4_repetition = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["comment_repetition:window_factorTRUE"]
+    }),
+    model_4_reciprocation = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["comment_reciprocation:window_factorTRUE"]
+    })
+  )
+}
+
+# Extract repetition and reciprocation interactions
+rep_rec_df <- extract_rep_rec_interactions(window_results)
+
+# Convert UNIX time to datetime
+rep_rec_df <- rep_rec_df %>%
+  mutate(datetime = as_datetime(time))
+
+# Create the plot
+ggplot(rep_rec_df) +
+  # Model 3 lines
+  geom_line(aes(x = datetime, y = model_3_repetition, color = "Repetition", linetype = "Model 3")) +
+  geom_line(aes(x = datetime, y = model_3_reciprocation, color = "Reciprocation", linetype = "Model 3")) +
+  
+  # Model 4 lines
+  geom_line(aes(x = datetime, y = model_4_repetition, color = "Repetition", linetype = "Model 4")) +
+  geom_line(aes(x = datetime, y = model_4_reciprocation, color = "Reciprocation", linetype = "Model 4")) +
+  
+  # Add horizontal line at y = 1
+  geom_hline(yintercept = 1, color = "black", linetype = "solid") +
+  
+  # Add vertical line at beginning of June 2021
+  geom_vline(xintercept = as.POSIXct("2021-06-01"), color = "black", linetype = "dotted") +
+  geom_vline(xintercept = as.POSIXct("2022-01-02"), linetype="dotted", color = "black") +
+
+  # Add annotation for AMC short squeeze
+  #annotate("text", x = as.POSIXct("2021-06-08"), y = 0.6, label = "AMC short\nsqueeze", hjust = 0, size = 4) +
+  #annotate("text", x = as.POSIXct("2022-01-10"), y = 1.4, label = "Price Decline", hjust = 0, size = 4) +
+  #annotate("text", x = as.POSIXct("2022-04-15"), y = 1.1, label = "No Effect Line", hjust = 0, size = 3) +
+
+  scale_linetype_manual(values = c("Model 3" = "dashed", "Model 4" = "solid"),
+                        name = "Model") +
+  scale_color_brewer(palette = "Set1", 
+                     name = "REM Statistic") +
+  labs(x = "Date",
+       y = "Conditional Likelihood Effect") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        legend.box = "vertical",
+        legend.margin = margin()) +
+  guides(linetype = guide_legend(order = 1),
+         color = guide_legend(order = 2)) +
+  
+  # Restrict x-axis domain
+  scale_x_datetime(limits = c(as.POSIXct("2021-02-01"), as.POSIXct("2022-06-30"))) +
+  
+  # Restrict y-axis domain
+  scale_y_continuous(limits = c(0, 3))
+
+# save the plot
+
+ggsave("repetition_reciprocation_over_time.png", width = 12, height = 8, dpi = 300, bg = "white", scale = 0.6)
+
+
+```
+
+
+# Clustering interactions over time for models 3 and 4
+
+```{r}
+# Function to extract clustering coefficient interactions
+extract_clustering_interactions <- function(window_results) {
+  data.frame(
+    window = seq_along(window_results),
+    time = sapply(window_results, function(x) {
+      window_name <- names(x)
+      mean(c(x[[window_name]]$start_time, x[[window_name]]$end_time))
+    }),
+    model_3_triad_out_out = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_3$coefficients$hazard_ratios["triad_out_out:window_factorTRUE"]
+    }),
+    model_3_triad_out_in = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_3$coefficients$hazard_ratios["triad_out_in:window_factorTRUE"]
+    }),
+    model_3_triad_in_out = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_3$coefficients$hazard_ratios["triad_in_out:window_factorTRUE"]
+    }),
+    model_3_four_cycle = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_3$coefficients$hazard_ratios["four_cycle:window_factorTRUE"]
+    }),
+    model_4_triad_out_out = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["triad_out_out:window_factorTRUE"]
+    }),
+    model_4_triad_out_in = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["triad_out_in:window_factorTRUE"]
+    }),
+    model_4_triad_in_out = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["triad_in_out:window_factorTRUE"]
+    }),
+    model_4_four_cycle = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["four_cycle:window_factorTRUE"]
+    })
+  )
+}
+
+# Extract clustering coefficient interactions
+clustering_df <- extract_clustering_interactions(window_results)
+
+# Convert UNIX time to datetime
+clustering_df <- clustering_df %>%
+  mutate(datetime = as_datetime(time))
+
+```
+
+```{r}
+# Create the plot
+ggplot(clustering_df) +
+  # Model 4 lines
+  geom_line(aes(x = datetime, y = model_4_triad_out_out, color = "Triad Out-Out"), linetype = "solid") +
+  geom_line(aes(x = datetime, y = model_4_triad_out_in, color = "Triad Out-In"), linetype = "solid") +
+  geom_line(aes(x = datetime, y = model_4_triad_in_out, color = "Triad In-Out"), linetype = "solid") +
+  geom_line(aes(x = datetime, y = model_4_four_cycle, color = "Four Cycle"), linetype = "solid") +
+  
+  # Add horizontal line at y = 0
+  geom_hline(yintercept = 1, color = "black", linetype = "solid") +
+  
+  # Add vertical line at beginning of June 2021
+  geom_vline(xintercept = as.POSIXct("2021-06-01"), color = "black", linetype = "dotted") +
+  geom_vline(xintercept = as.POSIXct("2022-01-02"), linetype="dotted", color = "black") +
+
+  # Add annotation for AMC short squeeze
+  #annotate("text", x = as.POSIXct("2021-06-08"), y = 0.6, label = "AMC short squeeze", hjust = 0, size = 4) +
+  #annotate("text", x = as.POSIXct("2022-01-10"), y = 1.4, label = "Price Decline", hjust = 0, size = 4) +
+  # annotate("text", x = as.POSIXct("2022-04-15"), y = 1.05, label = "Zero Effect Line", hjust = 0, size = 3) +
+
+  scale_color_brewer(palette = "Set1", 
+                     name = "REM Statistic (Model 4)") +
+  labs(x = "Date",
+       y = "Conditional Likelihood Effect") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        legend.box = "vertical",
+        legend.margin = margin()) +
+  guides(color = guide_legend(order = 1)) +
+  
+  # Restrict x-axis domain
+  scale_x_datetime(limits = c(as.POSIXct("2021-02-01"), as.POSIXct("2022-06-30"))) +
+  
+  # Restrict y-axis domain
+  scale_y_continuous(limits = c(0.5, 2.5))
+
+# Save the plot
+ggsave("clustering_over_time.png", width = 12, height = 8, dpi = 300, bg = "white", scale = 0.6)
+
+
+```
+
+# Interactions over time
+
+```{r}
+# Function to extract interaction terms from model 4
+extract_interaction_terms <- function(window_results) {
+  data.frame(
+    window = seq_along(window_results),
+    time = sapply(window_results, function(x) {
+      window_name <- names(x)
+      mean(c(x[[window_name]]$start_time, x[[window_name]]$end_time))
+    }),
+    activity_popularity = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["user_activity:user_popularity:window_factorTRUE"]
+    }),
+    activity_repetition = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["user_activity:comment_repetition:window_factorTRUE"]
+    }),
+    activity_reciprocation = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["user_activity:comment_reciprocation:window_factorTRUE"]
+    }),
+    repetition_reciprocation = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["comment_repetition:comment_reciprocation:window_factorTRUE"]
+    }),
+    popularity_repetition = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["user_popularity:comment_repetition:window_factorTRUE"]
+    }),
+    popularity_reciprocation = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["user_popularity:comment_reciprocation:window_factorTRUE"]
+    }),
+    four_cycle_activity = sapply(window_results, function(x) {
+      window_name <- names(x)
+      x[[window_name]]$results$model_4$coefficients$hazard_ratios["four_cycle:user_activity:window_factorTRUE"]
+    })
+  )
+}
+
+# Extract interaction terms
+interaction_df <- extract_interaction_terms(window_results)
+
+# Convert UNIX time to datetime
+interaction_df <- interaction_df %>%
+  mutate(datetime = as_datetime(time))
+
+# Reshape the data for plotting
+interaction_df_long <- interaction_df %>%
+  pivot_longer(cols = c(activity_popularity, activity_repetition, activity_reciprocation, 
+                        repetition_reciprocation, popularity_repetition, popularity_reciprocation, 
+                        four_cycle_activity),
+               names_to = "interaction",
+               values_to = "effect")
+
+# Create the plot
+ggplot(interaction_df_long) +
+  geom_line(aes(x = datetime, y = effect, color = interaction), linewidth = 1) +
+  
+  # Add horizontal line at y = 1
+  geom_hline(yintercept = 1, color = "black", linetype = "solid") +
+  
+  # Add vertical line at beginning of June 2021
+  geom_vline(xintercept = as.POSIXct("2021-06-01"), color = "black", linetype = "dotted") +
+  geom_vline(xintercept = as.POSIXct("2022-01-02"), linetype="dotted", color = "black") +
+
+  # Add annotation for AMC short squeeze
+  #annotate("text", x = as.POSIXct("2021-06-08"), y = 0.6, label = "AMC short squeeze", hjust = 0, size = 4) +
+  #annotate("text", x = as.POSIXct("2022-01-10"), y = 1.5, label = "Price Decline", hjust = 0, size = 4) +
+  # annotate("text", x = as.POSIXct("2022-05-15"), y = 1.03, label = "No Effect Line", hjust = 0, size = 3) +
+
+  scale_color_manual(
+    values = c("activity_popularity" = "#E41A1C",
+               "activity_repetition" = "#377EB8",
+               "activity_reciprocation" = "#4DAF4A",
+               "repetition_reciprocation" = "#984EA3",
+               "popularity_repetition" = "#FF7F00",
+               "popularity_reciprocation" = "#A65628"),
+    name = "REM Stat. Effect\nInteraction (Model 4)",
+    labels = c("Activity x Popularity", "Activity x Repetition", "Activity x Reciprocation",
+               "Repetition x Reciprocation", "Popularity x Repetition", "Popularity x Reciprocation")) +
+  labs(x = "Date",
+       y = "Conditional Likelihood Effect") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        legend.box = "vertical",
+        legend.margin = margin()) +
+  
+  # Restrict x-axis domain
+  scale_x_datetime(limits = c(as.POSIXct("2021-02-01"), as.POSIXct("2022-06-30"))) +
+  
+  # Restrict y-axis domain
+  scale_y_continuous(limits = c(0.5, 2.0))
+
+
+ggsave("interactions_over_time.png", width = 12, height = 8, dpi = 300, bg = "white", scale = 0.6)
+
+
+```
+
+
+

@@ -1,0 +1,380 @@
+---
+title: "network_longitudinal_visualization"
+author: '29189'
+date: "2024-07-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+events <- read.csv("..\\Event_list\\event_list_6var.csv")
+library(tidyverse)
+```
+
+```{r}
+# Get the amc stock price historical data
+library(quantmod)
+
+# Download AMC data
+getSymbols("AMC", from = "2021-01-01", to = "2022-12-31", src = "yahoo")
+
+# Convert to dataframe
+amc_data <- data.frame(date=index(AMC), coredata(AMC))
+
+# Compute the percentage gain from the stock price on first day of trading in 2021
+
+# Firstly get the base price, the closing price on the first day of trading
+base_price <- amc_data %>% 
+  filter(date == as.Date("2021-01-04")) %>% 
+  pull(AMC.Close)
+
+# Next calculate the percent gain on each day from this base price
+amc_data <- amc_data %>%
+  mutate(percent_gain = (AMC.High - base_price) / base_price * 100)
+```
+
+
+# Density Graph for Comment Length
+
+```{r}
+# Assuming the events dataset is already loaded
+# Step 1: Calculate the average comment length for each user
+user_comment_length <- events %>%
+  group_by(sender) %>%
+  summarise(avg_comment_length = mean(length_sender))
+
+# Step 2: Create the density plot for average comment length
+ggplot(user_comment_length, aes(x = avg_comment_length)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  scale_x_log10() +  # Use a log scale to better visualize the distribution
+  labs(x = "Comment Length (characters)",
+       y = "Density") +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# save it 
+ggsave("comment_length_distribution.png", width = 8, height = 6, dpi = 300, bg= "white", scale = 0.8)
+
+```
+
+## In-Degree Comment Density Graph
+
+```{r}
+
+# Step 1: Calculate the number of times each user is listed as a receiver
+user_in_degree <- events %>%
+  group_by(receiver) %>%
+  summarise(received_count = n())
+
+# Define custom breaks and labels
+breaks <- c(1, 10, 100, 1000, 10000)
+labels <- c("1", "10", "100", "1k", "10k")
+
+# Step 2: Create the density plot with custom x-axis scale
+ggplot(user_in_degree, aes(x = received_count)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  scale_x_log10(breaks = breaks, labels = labels, limits = c(1,10000)) +  
+  labs(x = "Total Comments Received (Log Scale)",
+       y = "Density of Total Users") +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# Save the plot
+ggsave("in_degree_density_plot.png", width = 8, height = 6, dpi = 300, bg= "white", scale = 0.8)
+
+```
+## Out-Degree Comment Density Graph
+
+```{r}
+# Step 1: Calculate the number of times each user is listed as a sender
+user_out_degree <- events %>%
+  group_by(sender) %>%
+  summarise(sent_count = n())
+
+# Define custom breaks and labels
+breaks <- c(1, 10, 100, 1000, 10000)
+labels <- c("1", "10", "100", "1k", "10k")
+
+# Step 2: Create the density plot with custom x-axis scale
+ggplot(user_out_degree, aes(x = sent_count)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  scale_x_log10(breaks = breaks, labels = labels, limits = c(1,10000)) +  
+  labs(x = "Total Comments Sent (Log Scale)",
+       y = "Density of Total Users") +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# Save the plot
+ggsave("out_degree_density_plot.png", width = 8, height = 6, dpi = 300, bg= "white", scale = 0.8)
+
+
+```
+
+
+# Pie-Graph of sub and main comments
+
+```{r}
+# Assuming the events dataset is already loaded
+# Step 1: Calculate the number of main and sub comments
+comment_types <- events %>%
+  group_by(is_subcomment) %>%
+  summarise(count = n())
+
+# Step 2: Create the pie chart
+ggplot(comment_types, aes(x = "", y = count, fill = comment_type)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Distribution of Main and Sub Comments",
+       fill = "Comment Type") +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank()
+  )
+```
+
+
+
+
+# Comments Per Day  vs. Stock Price over Time
+
+```{r}
+
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(scales)
+
+# Assuming the events dataset is already loaded and has the 'time' column in Unix timestamp format
+# Convert the 'time' column to Date format and calculate the number of comments per day
+comments_per_day <- events %>%
+  mutate(Date = as.Date(as_datetime(time))) %>%
+  group_by(Date) %>%
+  rename(date = Date) %>% 
+  summarise(comments_count = n())
+
+# Merge the stock price data and comments per day data
+merged_data <- amc_data %>% left_join(comments_per_day, by = c("date" = "date"))
+
+# Define a scaling factor to transform the y-axis for comments per day
+scaling_factor <- max(merged_data$percent_gain, na.rm = TRUE) / max(merged_data$comments_count, na.rm = TRUE)
+
+# Plot percent_gain and comments_count over time with different y-scales
+ggplot(merged_data, aes(x = date)) +
+  geom_line(aes(y = percent_gain, color = "Stock\nPrice"), size = 1, alpha = 0.7) +
+  geom_line(aes(y = comments_count * scaling_factor, color = "Comments\nper Day"), size = 1, alpha = 0.7) +
+  scale_y_continuous(
+    name = "Stock\nPrice\n(% Gain)",
+    sec.axis = sec_axis(~ . / scaling_factor, name = "Comments\nper Day")
+  ) +
+  scale_x_date(
+    limits = as.Date(c("2021-01-01", "2022-06-30")),
+    breaks = as.Date(c("2021-01-01", "2021-06-30", "2022-01-01", "2022-06-30")),
+    date_labels = "%b %Y"
+  ) +
+  labs(x = "Date", color = "Variable") +
+  scale_color_manual(values = c("Stock\nPrice" = "red", "Comments\nper Day" = "blue")) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title.y.left = element_text(color = "red", angle = 0, vjust = 0.4, size = 10, margin = margin(t = 40)),
+    axis.title.y.right = element_text(color = "blue", angle = 0, vjust = 0.4, size = 10, margin = margin(t = 40)),
+    legend.position = "bottom"
+  )
+
+# save the plot
+ggsave("comment_rate_over_time.png", width = 8, height = 6, dpi = 300, bg="white",scale = 0.8)
+
+```
+
+# Active Users Per Day  vs. Stock Price over Time
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(scales)
+
+users_per_day <- events %>%
+  mutate(Date = as.Date(as_datetime(time))) %>%
+  distinct(sender, Date) %>%
+  group_by(Date) %>%
+  summarise(active_users_count = n())
+
+# Merge the stock price data and active users per day data
+merged_data <- amc_data %>% left_join(users_per_day, by = c("date" = "Date"))
+
+# Define a scaling factor to transform the y-axis for active users per day
+scaling_factor <- max(merged_data$percent_gain, na.rm = TRUE) / max(merged_data$active_users_count, na.rm = TRUE)
+
+# Plot percent_gain and active_users_count over time with different y-scales
+ggplot(merged_data, aes(x = date)) +
+  geom_line(aes(y = percent_gain, color = "Stock Price"), size = 1, alpha = 0.7) +
+  geom_line(aes(y = active_users_count * scaling_factor, color = "Active Users per Day"), size = 1, alpha = 0.7) +
+  scale_y_continuous(
+    name = "Stock Price\n(% Gain)",
+    sec.axis = sec_axis(~ . / scaling_factor, name = "Active Users\nper Day")
+  ) +
+  scale_x_date(
+    limits = as.Date(c("2021-01-01", "2022-06-30")),
+    breaks = as.Date(c("2021-01-01", "2021-06-30", "2022-01-01", "2022-06-30")),
+    date_labels = "%b %Y"
+  ) +
+  labs(x = "Date", color = "Variable") +
+  scale_color_manual(values = c("Stock Price" = "red", "Active Users per Day" = "blue")) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title.y.left = element_text(color = "red", angle = 0, vjust = 0.4, size = 10, margin = margin(t = 40)),
+    axis.title.y.right = element_text(color = "blue", angle = 0, vjust = 0.4, size = 10, margin = margin(t = 40)),
+    legend.position = "bottom"
+  )
+
+# save the plot
+ggsave("active_users_over_time.png", width = 8, height = 6, dpi = 300, bg="white",scale = 0.8)
+```
+
+# Observed Users per Day vs. Cumulative Total Users Observed 
+
+```{r}
+library(lubridate)  # Ensure lubridate is loaded for date manipulation
+
+# Step 1: Calculate the number of observed users per week
+users_per_week <- events %>%
+  mutate(Week = floor_date(as.Date(as_datetime(time)), "week")) %>%
+  distinct(sender, Week) %>%
+  group_by(Week) %>%
+  summarise(observed_users_count = n())
+
+# Step 2: Calculate the cumulative total of observed users
+cumulative_users <- events %>%
+  mutate(Week = floor_date(as.Date(as_datetime(time)), "week")) %>%
+  distinct(sender, Week) %>%
+  arrange(Week) %>%
+  mutate(cumulative_users_count = cumsum(!duplicated(sender)))
+
+# Step 3: Merge the weekly and cumulative user counts
+merged_data <- users_per_week %>%
+  left_join(cumulative_users %>%
+              group_by(Week) %>%
+              summarise(cumulative_users_count = max(cumulative_users_count)),
+            by = "Week")
+
+# Step 4: Plot observed users per week and cumulative total users observed over time on the same y-axis
+ggplot(merged_data, aes(x = Week)) +
+  geom_line(aes(y = observed_users_count, color = "Observed Users per Week"), size = 1, alpha = 0.7) +
+  geom_line(aes(y = cumulative_users_count, color = "Cumulative Total Users Observed"), size = 1, alpha = 0.7) +
+  scale_x_date(
+    limits = as.Date(c("2021-01-01", "2022-06-30")),
+    breaks = as.Date(c("2021-01-01", "2021-06-30", "2022-01-01", "2022-06-30")),
+    date_labels = "%b %Y"
+  ) +
+  labs(x = "Date", y = "User Count", color = "Variable") +
+  scale_color_manual(values = c("Observed Users per Week" = "blue", "Cumulative Total Users Observed" = "green")) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+ggsave("cumulative_observed_users_per_week.png", width = 8, height = 6, dpi = 300, bg="white",scale = 0.8)
+
+
+```
+
+
+# 
+
+
+# VISUALIZATIONS NOT INCLUDED IN FINAL PAPER
+
+## Comments submitted by time of day
+
+```{r}
+
+library(lubridate)
+
+# Assuming the events dataset is already loaded
+# Convert the 'time' column to POSIXct format
+events$time <- as.POSIXct(events$time, origin = "1970-01-01", tz = "UTC")
+events$time <- with_tz(events$time, tzone = "America/New_York")  # Convert to Eastern Time
+
+# Extract the hour of the day from the 'time' column
+events$hour <- as.numeric(format(events$time, "%H"))
+
+# Calculate the number of comments submitted for each hour of the day
+comments_by_hour <- events %>%
+  group_by(hour) %>%
+  summarise(comment_count = n())
+
+# Calculate the proportion of comments for each hour of the day
+total_comments <- sum(comments_by_hour$comment_count)
+comments_by_hour <- comments_by_hour %>%
+  mutate(proportion = comment_count / total_comments)
+
+# Create a density plot of the proportion of comments submitted by hour of the day
+ggplot(comments_by_hour, aes(x = hour, y = proportion)) +
+  geom_line(color = "blue", size = 1) +
+  labs(x = "Hour of the Day (Eastern Time)", y = "Proportion of Comments") +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(comments_by_hour$proportion))) +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 23))
+
+```
+
+
+## Comments submitted by day of the week
+
+```{r}
+# Extract the day of the week from the 'time' column
+events$day_of_week <- wday(events$time, label = TRUE, abbr = FALSE)
+
+# Calculate the number of comments submitted for each day of the week
+comments_by_day <- events %>%
+  group_by(day_of_week) %>%
+  summarise(comment_count = n())
+
+# Calculate the proportion of comments for each day of the week
+total_comments <- sum(comments_by_day$comment_count)
+comments_by_day <- comments_by_day %>%
+  mutate(proportion = comment_count / total_comments)
+
+# Create a bar plot of the proportion of comments submitted by day of the week
+ggplot(comments_by_day, aes(x = day_of_week, y = proportion)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "blue", size = 1) +
+  labs(x = "Day of the Week", y = "Proportion of Comments") +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(comments_by_day$proportion)))
+```
+
+
+
+

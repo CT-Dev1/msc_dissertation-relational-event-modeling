@@ -1,0 +1,176 @@
+---
+title: "Untitled"
+author: '29189'
+date: "2024-07-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(survival)
+library(stargazer)
+```
+
+
+```{r}
+
+# Firstly read in the data - change to match correct file
+events <- read.csv("../Output_Data/stage1/full_results_hl336.csv")
+
+#Sample data instead
+#events <- read.csv("../Output_Data/stage1/sample_results_hl336.csv")
+
+# Next generate the manually inputted statistics
+
+# 1) NETWORK - Seconds since last observation
+events <- events %>%
+  arrange(TIME) %>%  # Ensure data is ordered by TIME
+  mutate(time_since_last_comment = TIME - lag(TIME, default = first(TIME))) %>%
+  group_by(TIME) %>%
+  mutate(time_since_last_comment = first(time_since_last_comment)) %>%
+  ungroup()
+
+# Check correct implementation
+# print(events[20000:32000,])
+
+# Standardize explanatory variables - ensure correct columns selected
+events[,c(9:ncol(events))] <- scale(events[,c(9:ncol(events))])
+
+#print(events[,c(1:4,ncol(events))])
+
+```
+
+# short script for removing 1/5 of the control sampled non events
+
+```{r}
+# remove one out of 5 rows in event where IS_OBSERVED = 0
+# Set seed for reproducibility
+set.seed(123)
+
+# Modify the data frame in place to reduce memory usage
+events <- events %>%
+  mutate(temp_id = row_number()) %>%
+  group_by(temp_group = (row_number() - 1) %/% 5) %>%
+  filter(!(IS_OBSERVED == 0 & row_number() == sample(1:n(), 1))) %>% # change the sample(1:n(), 1) to sample(1:n(), 2) to get rid of 2 out of 5 rows for instance
+  ungroup() %>%
+  select(-temp_group, -temp_id)
+
+```
+
+
+
+```{r}
+library(survival)
+library(stargazer)
+# Model 0 - Node Effects - Baseline Model
+event.surv <- Surv(time = rep(1,nrow(events)), event = events$IS_OBSERVED)
+model.0 <- coxph(event.surv ~ 
+                  + user_activity
+                  + user_popularity
+		              + strata(TIME_UNIT)
+                  , data = events,
+		              control = coxph.control(iter.max = 100))
+
+# Model 1 - Directed Dyadic Effects
+model.1 <- coxph(event.surv ~ 
+                  + user_activity
+                  + user_popularity
+                  + comment_repetition
+                  + comment_reciprocation
+		              + strata(TIME_UNIT)
+                  , data = events,
+		              control = coxph.control(iter.max = 100))
+
+# Model 2 - Network Effects
+model.2 <- coxph(event.surv ~ 
+                  + user_activity
+                  + user_popularity
+                  + comment_repetition
+                  + comment_reciprocation
+                  + total.comments.observed
+                  + time_since_last_comment
+		              + strata(TIME_UNIT)
+                  , data = events,
+		              control = coxph.control(iter.max = 100))
+
+# Model 3 - Clustering
+model.3 <- coxph(event.surv ~ 
+                  + user_activity
+                  + user_popularity
+                  + comment_repetition
+                  + comment_reciprocation
+                  + total.comments.observed
+                  + time_since_last_comment
+                  + triad_out_out
+                  + triad_out_in
+                  + triad_in_out
+                  + four_cycle
+		              + strata(TIME_UNIT)
+                  , data = events,
+		              control = coxph.control(iter.max = 100))
+
+# Model 4 - Interactions and Non-Linear Effects
+model.4 <- coxph(event.surv ~ 
+                  + user_activity
+                  + user_popularity
+                  + comment_repetition
+                  + comment_reciprocation
+                  + total.comments.observed
+                  + time_since_last_comment
+                  + triad_out_out
+                  + triad_out_in
+                  + triad_in_out
+                  + four_cycle
+                  # Non Linear Effects
+                  + I(user_activity^2)
+                  + I(user_popularity^2)
+                  # Interactions
+                  + user_activity*user_popularity
+                  + user_activity*comment_repetition
+                  + user_activity*comment_reciprocation
+                  + comment_repetition*comment_reciprocation
+                  + user_popularity*comment_repetition
+                  + user_popularity*comment_reciprocation
+                  + four_cycle * user_activity
+		              + strata(TIME_UNIT)
+                  , data = events,
+		              control = coxph.control(iter.max = 100))
+
+# Put all the models in a table
+stargazer(model.0, model.1, model.2, model.3, model.4, 
+          type = "text",
+          title = "Cox Proportional Hazards Models",
+          dep.var.labels.include = FALSE,
+          column.labels = c("Model 0", "Model 1", "Model 2", "Model 3", "Model 4"),
+          covariate.labels = c("User Activity", "User Popularity", "Comment Repetition", 
+                               "Comment Reciprocation", "Total Comments Observed", 
+                               "Time Since Last Comment", "Triad Out-Out", 
+                               "Triad Out-In", "Triad In-Out", "Four Cycle", 
+                               "User Activity^2", "User Popularity^2", 
+                               "User Activity * User Popularity", 
+                               "User Activity * Comment Repetition", 
+                               "User Activity * Comment Reciprocation", 
+                               "Comment Repetition * Comment Reciprocation", 
+                               "User Popularity * Comment Repetition", 
+                               "User Popularity * Comment Reciprocation",
+                               "Four Cycle * User Activity"),
+          omit.stat = c("ll", "rsq", "max.rsq", "lr"),
+          no.space = TRUE,
+          out = "cox_models.txt")
+
+# Save the models
+#save(model.4, file = "s1_model4_final.RData")
+
+# Alternatively Load the models
+# load("s1_models_final.RData")
+
+```
+
+
+
+
+

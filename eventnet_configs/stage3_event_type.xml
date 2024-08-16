@@ -1,0 +1,109 @@
+<?xml version="1.0" ?>
+<eventnet.configuration name="eventnet.configuration" version="1.1">
+  <input.files accept=".csv" has.header="true" delimiter="COMMA" quote.char="DOUBLEQUOTE">
+    <input.directory name="D:\OneDrive - London School of Economics\Dissertation Data\Event_List"/>
+    <file name="event_list_6var.csv"/>
+  </input.files>
+  <output.directory name="D:\OneDrive - London School of Economics\Dissertation Data\Eventnet_Output_Temp"/>
+  <event.components>
+    <component name="SOURCE" column.name="sender"/>
+    <component name="TARGET" column.name="receiver"/>
+    <component name="TIME" column.name="time"/>
+    <component name="TYPE" column.name="is_subcomment"/>
+  </event.components>
+  <network.mode is.multimode="false"/>
+  <event.types>
+    <type name="sub" implied="false" admits.loops="true"/>
+    <type name="main" implied="false" admits.loops="true"/>
+  </event.types>
+  <time time.format.type="INTEGER" interval.type="TIME" time.unit="3600"/>
+  <attribute name="main activity" class="NODE_LEVEL" type="DEFAULT_NODE_LEVEL_ATTRIBUTE" description="outdegree main events">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.absolute.value.below="0.1"/>
+    <event.response event.type="main" direction="OUT"/>
+  </attribute>
+  <attribute name="sub popularity" class="NODE_LEVEL" type="DEFAULT_NODE_LEVEL_ATTRIBUTE" description="indegree sub events">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.absolute.value.below="0.1"/>
+    <event.response event.type="sub" direction="IN"/>
+  </attribute>
+  <attribute name="main popularity" class="NODE_LEVEL" type="DEFAULT_NODE_LEVEL_ATTRIBUTE" description="indegree main events">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.absolute.value.below="0.1"/>
+    <event.response event.type="main" direction="IN"/>
+  </attribute>
+  <attribute name="sub activity" class="NODE_LEVEL" type="DEFAULT_NODE_LEVEL_ATTRIBUTE" description="outdegree sub events">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.absolute.value.below="0.1"/>
+    <event.response event.type="sub" direction="OUT"/>
+  </attribute>
+  <attribute name="recent sub comment" class="DYAD_LEVEL" type="DEFAULT_DYAD_LEVEL_ATTRIBUTE" description="number of past main events">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.absolute.value.below="0.1"/>
+    <event.response event.type="main"/>
+    <event.response event.type="sub"/>
+  </attribute>
+  <attribute name="recent main comment" class="DYAD_LEVEL" type="DEFAULT_DYAD_LEVEL_ATTRIBUTE" description="number of past main events">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.absolute.value.below="0.1"/>
+    <event.response event.type="main"/>
+  </attribute>
+  <attribute name="last event time in network" class="NETWORK_LEVEL" type="DEFAULT_NETWORK_LEVEL_ATTRIBUTE" description="time of last event in network">
+    <attr.update type="SET_VALUE_TO"/>
+    <event.response event.type="sub" time.scale.type="TIME"/>
+    <event.response event.type="main" time.scale.type="TIME"/>
+  </attribute>
+  <statistic name="main_activity" type="NODE_STATISTIC" description="main outdegree of user" node.attr.name.1="main activity" endpoint="SOURCE">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="sub_activity" type="NODE_STATISTIC" description="sub outdegree of user" node.attr.name.1="sub activity" endpoint="SOURCE">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="main_popularity" type="NODE_STATISTIC" description="main indegree of user" node.attr.name.1="main popularity" endpoint="TARGET">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="sub_popularity" type="NODE_STATISTIC" description="sub indegree of user" node.attr.name.1="sub activity" endpoint="TARGET">
+    <function type="TIMES" parameter="1.0"/>
+  </statistic>
+  <statistic name="last_network_time" type="NETWORK_STATISTIC" description="time of last event in whole network" network.attr.name.1="last event time in network"/>
+  <statistic name="main_4_cycle" type="FOUR_CYCLE_STATISTIC" description="source and target connected via 3 main ties over two different nodes" dyad.attr.name.1="recent main comment" direction.1="OUT" dyad.attr.name.2="recent main comment" direction.2="OUT" dyad.attr.name.3="recent main comment" direction.3="OUT">
+    <function type="LOG1P"/>
+    <function.combine.serial type="MIN"/>
+  </statistic>
+  <statistic name="sub_4_cycle" type="FOUR_CYCLE_STATISTIC" description="source and target connected via 3 sub ties over two different nodes" dyad.attr.name.1="recent sub comment" direction.1="OUT" dyad.attr.name.2="recent sub comment" direction.2="OUT" dyad.attr.name.3="recent sub comment" direction.3="OUT">
+    <function type="LOG1P"/>
+    <function.combine.serial type="MIN"/>
+  </statistic>
+  <statistic name="main_triangle" type="TRIANGLE_STATISTIC" dyad.attr.name.1="recent main comment" direction.1="OUT" dyad.attr.name.2="recent main comment" direction.2="OUT">
+    <function type="LOG1P"/>
+    <function.combine.serial type="MIN"/>
+  </statistic>
+  <statistic name="sub_triangle" type="TRIANGLE_STATISTIC" dyad.attr.name.1="recent sub comment" direction.1="OUT" dyad.attr.name.2="recent sub comment" direction.2="OUT">
+    <function type="LOG1P"/>
+    <function.combine.serial type="MIN"/>
+  </statistic>
+  <statistic name="repetition_main_out" type="DYAD_STATISTIC" description="main events on same dyad" dyad.attr.name.1="recent main comment" direction.1="OUT">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="repetition_sub_out" type="DYAD_STATISTIC" description="sub events on same dyad" dyad.attr.name.1="recent sub comment" direction.1="OUT">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="out_degree_main" type="DEGREE_STATISTIC" dyad.attr.name.1="recent main comment" direction.1="OUT" endpoint="SOURCE">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="in_degree_main" type="DEGREE_STATISTIC" dyad.attr.name.1="recent main comment" direction.1="IN" endpoint="SOURCE">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="out_degree_sub" type="DEGREE_STATISTIC" dyad.attr.name.1="recent sub comment" direction.1="OUT" endpoint="SOURCE">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="in_degree_sub" type="DEGREE_STATISTIC" dyad.attr.name.1="recent sub comment" direction.1="IN" endpoint="SOURCE">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="reciprocation_main" type="DYAD_STATISTIC" description="main events on same dyad" dyad.attr.name.1="recent main comment" direction.1="IN">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="reciprocation_sub" type="DYAD_STATISTIC" description="sub events on same dyad" dyad.attr.name.1="recent sub comment" direction.1="OUT">
+    <function type="LOG1P"/>
+  </statistic>
+  <observation name="SUB" type="DEFAULT_DYADIC_OBS" description="sub events" apply.case.control.sampling="true" number.of.non.events="5">
+    <consider.event.type name="sub"/>
+  </observation>
+  <observation name="MAIN" type="DEFAULT_DYADIC_OBS" description="rate of main events, case control sampling" apply.case.control.sampling="true" number.of.non.events="5">
+    <consider.event.type name="main"/>
+  </observation>
+</eventnet.configuration>

@@ -1,0 +1,69 @@
+<?xml version="1.0" ?>
+<eventnet.configuration name="test" version="1.1">
+  <input.files accept=".csv" has.header="true" delimiter="COMMA" quote.char="DOUBLEQUOTE">
+    <input.directory name="D:\OneDrive - London School of Economics\Dissertation Data\Event_List"/>
+    <file name="event_list_6var.csv"/>
+  </input.files>
+  <output.directory name="D:\OneDrive - London School of Economics\Dissertation Data\Eventnet_Output_Temp"/>
+  <event.components>
+    <component name="SOURCE" column.name="sender"/>
+    <component name="TARGET" column.name="receiver"/>
+    <component name="TIME" column.name="time"/>
+  </event.components>
+  <network.mode is.multimode="false"/>
+  <event.types>
+    <type name="EVENT" implied="true" admits.loops="true"/>
+  </event.types>
+  <time time.format.type="INTEGER" interval.type="TIME" time.unit="3600"/>
+  <attribute name="last_comment_time" class="NETWORK_LEVEL" type="DEFAULT_NETWORK_LEVEL_ATTRIBUTE" description="UNIX time of the last observed comment">
+    <attr.update type="SET_VALUE_TO"/>
+    <event.response event.type="EVENT" time.scale.type="TIME"/>
+  </attribute>
+  <attribute name="recent_user_activity" class="NODE_LEVEL" type="DEFAULT_NODE_LEVEL_ATTRIBUTE" description="out-degree comments of user, halflife of 72 hours">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.below="0.1"/>
+    <event.response event.type="EVENT" direction="OUT"/>
+  </attribute>
+  <attribute name="recent_comment" class="DYAD_LEVEL" type="DEFAULT_DYAD_LEVEL_ATTRIBUTE" description="number of past comment events, halflife of 72 hours, default directed from i to j">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.below="0.1"/>
+    <event.response event.type="EVENT"/>
+  </attribute>
+  <attribute name="user_popularity" class="NODE_LEVEL" type="DEFAULT_NODE_LEVEL_ATTRIBUTE" description="in-degree comments of user, halflife of 72 hours">
+    <attr.update type="INCREMENT_VALUE_BY" decay.time.scale="TIME_UNIT" halflife="336.0" zero.if.below="0.1"/>
+    <event.response event.type="EVENT" direction="IN"/>
+  </attribute>
+  <attribute name="total_comments_network" class="NETWORK_LEVEL" type="DEFAULT_NETWORK_LEVEL_ATTRIBUTE" description="cumulative observed comments in network">
+    <attr.update type="INCREMENT_VALUE_BY"/>
+    <event.response event.type="EVENT"/>
+  </attribute>
+  <statistic name="user_popularity" type="NODE_STATISTIC" description="in-degree of comments" node.attr.name.1="recent_user_activity" endpoint="TARGET">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="comment_reciprocation" type="DYAD_STATISTIC" description="reciprocated comment to user" dyad.attr.name.1="recent_comment" direction.1="IN">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="user_activity" type="NODE_STATISTIC" description="out-degree comments sent by user" node.attr.name.1="recent_user_activity" endpoint="SOURCE">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="four_cycle" type="FOUR_CYCLE_STATISTIC" description="Source and target connected via 3 comment ties over three different users - out, out, out, in edge sequence" dyad.attr.name.1="recent_comment" direction.1="OUT" dyad.attr.name.2="recent_comment" direction.2="OUT" dyad.attr.name.3="recent_comment" direction.3="OUT">
+    <function type="LOG1P"/>
+    <function.combine.serial type="MIN"/>
+  </statistic>
+  <statistic name="time_of_last_comment" type="NETWORK_STATISTIC" description="time of last observed comment in UNIX" network.attr.name.1="last_comment_time"/>
+  <statistic name="total comments observed" type="NETWORK_STATISTIC" description="total comments observed in network cumulative" network.attr.name.1="total_comments_network"/>
+  <statistic name="comment_repetition" type="DYAD_STATISTIC" description="repeated comment to same user" dyad.attr.name.1="recent_comment" direction.1="OUT">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="triad_out_out" type="TRIANGLE_STATISTIC" description="source and target connected via 2 comment ties over two different users - out, out, in edge sequence" dyad.attr.name.1="recent_comment" direction.1="OUT" dyad.attr.name.2="recent_comment" direction.2="OUT">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="triad_out_in" type="TRIANGLE_STATISTIC" description="Source and target connected via 2 comment ties over two different users - out, in, in edge sequence" dyad.attr.name.1="recent_comment" direction.1="OUT" dyad.attr.name.2="recent_comment" direction.2="IN">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="triad_in_out" type="TRIANGLE_STATISTIC" description="Source and target connected via 2 comment ties over two different users - in, out, in edge sequence" dyad.attr.name.1="recent_comment" direction.1="IN" dyad.attr.name.2="recent_comment" direction.2="OUT">
+    <function type="LOG1P"/>
+  </statistic>
+  <statistic name="triad_in_in" type="TRIANGLE_STATISTIC" description="Source and target connected via 2 comment ties over two different users - in, in, in edge sequence" dyad.attr.name.1="recent_comment" direction.1="OUT" dyad.attr.name.2="recent_comment" direction.2="OUT">
+    <function type="LOG1P"/>
+  </statistic>
+  <observation name="COMMENT" type="DEFAULT_DYADIC_OBS" description="rate of commenting, case control sampling = 5" exclude.loops="true" apply.case.control.sampling="true" number.of.non.events="5"/>
+</eventnet.configuration>

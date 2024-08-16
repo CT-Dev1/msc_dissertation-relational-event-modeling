@@ -1,0 +1,168 @@
+---
+title: "missing_data_visualization"
+author: '29189'
+date: "2024-07-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+# Load the data, input correct file paths to full raw data of 17 month observation period 
+raw_data_comments <- read.csv("..\\Full_Data_Raw\\full_comments_raw.csv") 
+raw_data_submissions <- read.csv("..\\Full_Data_Raw\\full_submissions_raw.csv") 
+```
+
+
+# Pie chart of sources of missing submissions
+
+```{r}
+library(tidyverse)
+# Load necessary libraries
+
+# Initial count of submissions
+initial_count <- nrow(raw_data_submissions)
+
+# Step 1: Remove deleted authors
+user_deleted_count <- raw_data_submissions %>% 
+  filter(author == "[deleted]") %>% 
+  nrow()
+submissions_step1 <- raw_data_submissions %>% 
+  filter(author != "[deleted]")
+
+# Step 2: Filter by moderator
+moderator_removed_count <- submissions_step1 %>% 
+  filter(grepl("moderator", removed_by_category) == TRUE) %>% 
+  nrow()
+submissions_step2 <- submissions_step1 %>% 
+  filter(grepl("moderator", removed_by_category) == FALSE)
+
+# Step 3: Filter by reddit
+reddit_removed_count <- submissions_step2 %>% 
+  filter(grepl("reddit", removed_by_category) == TRUE) %>% 
+  nrow()
+submissions_step3 <- submissions_step2 %>% 
+  filter(grepl("reddit", removed_by_category) == FALSE)
+
+# Step 4: Other filters combined
+other_count <- submissions_step3 %>% 
+  filter(grepl("deleted", removed_by_category) == TRUE | 
+           grepl("author", removed_by_category) == TRUE | 
+           grepl("automod_filtered", removed_by_category) == TRUE | 
+           grepl("copyright_takedown", removed_by_category) == TRUE) %>% 
+  nrow()
+submissions_step4 <- submissions_step3 %>% 
+  filter(grepl("deleted", removed_by_category) == FALSE & 
+           grepl("author", removed_by_category) == FALSE & 
+           grepl("automod_filtered", removed_by_category) == FALSE & 
+           grepl("copyright_takedown", removed_by_category) == FALSE)
+
+# Calculate the count of complete (non-missing) data
+complete_count <- nrow(submissions_step4)
+
+# Create a summary dataframe for visualization
+missing_data_summary <- data.frame(
+  Category = c('User Deleted', 'Moderator Removed', 'Reddit Removed', 'Other', 'Complete Data'),
+  Count = c(user_deleted_count, moderator_removed_count, reddit_removed_count, 
+            other_count, complete_count)
+)
+
+# Ensure the counts add up to the initial count
+if (sum(missing_data_summary$Count) != initial_count) {
+  stop("The total count does not match the initial count. Please check the filtering steps.")
+}
+
+# Plotting the data as a pie chart with counts
+ggplot(missing_data_summary, aes(x = "", y = Count, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = Count), position = position_stack(vjust = 0.5)) +
+  theme_void() +
+  theme(legend.title = element_blank())
+```
+
+
+
+# Pie chart of sources of missing comments
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+
+# Assume raw_data_comments is already loaded in your environment
+# Initial count of comments
+initial_count <- nrow(raw_data_comments)
+
+# Step 1: Remove deleted comments
+deleted_comments_count <- raw_data_comments %>% 
+  filter(author == "[deleted]") %>% 
+  nrow()
+comments_step1 <- raw_data_comments %>% 
+  filter(author != "[deleted]")
+
+# Step 2: Manually inputted count, the number of commments with parents that were deleted
+manual_count <- 2163834 
+
+# Step 3: Calculate the count of unfiltered (complete) comments
+complete_count <- nrow(comments_step1) - manual_count
+
+# Create a summary dataframe for visualization
+missing_data_summary <- data.frame(
+  Category = c('Deleted', 'Missing Parent', 'Complete Relational Data'),
+  Count = c(deleted_comments_count, manual_count, complete_count)
+)
+
+
+# Plotting the data as a pie chart with counts
+ggplot(missing_data_summary, aes(x = "", y = Count, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = Count), position = position_stack(vjust = 0.5)) +
+  theme_void() +
+  theme(legend.title = element_blank())
+```
+
+
+# Calculate summary statistics for the missing comments
+
+```{r}
+missing_comments <- raw_data_comments %>% 
+  filter(author == "[deleted]") %>% 
+  select(created_utc, author, body, score, link_id, parent_id, id, gilded, stickied, is_submitter, permalink, name) %>% 
+  mutate(body_length = nchar(body)) %>% 
+  summarise(
+    Total_Comments = n(),
+    Avg_Body_Length = mean(body_length)
+  )
+
+complete_comments <- raw_data_comments %>% 
+  filter(author != "[deleted]") %>% 
+  select(created_utc, author, body, score, link_id, parent_id, id, gilded, stickied, is_submitter, permalink, name) %>% 
+  mutate(body_length = nchar(body)) %>% 
+  summarise(
+    Total_Comments = n(),
+    Avg_Body_Length = mean(body_length)
+  )
+
+print(complete_comments)
+
+print(missing_comments)
+```
+
+
+
+```{r}
+
+events <- read.csv("..\\Event_List\\event_list_6var.csv")
+
+```
+
+
+
+
+
